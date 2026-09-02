@@ -1,0 +1,102 @@
+/*PREPRINT*/
+
+* Compound Value Types in Common Lisp
+- <2026-09-02 Wed>
+
+** Terminology
+
+In Common Lisp, there is a distinction between what I will call here "Value Types" and
+"Reference Types". The difference between them is what happens when you pass them to
+a function: a value type is copied, and a reference type is passed by reference.
+Value types include things like numbers and symbols, reference types are pretty
+much everything else.
+
+This is in contrast to a language like C, whereign you have the choice to pass
+(most) things by value, or pass them by reference via pointer. The advantage of
+passing things by value is that it makes your code more /*functional*/. When
+you pass an object of value type to a function, you don't need to worry that the function
+might cause unexpected mutations to the object, thus reducing the cognitive overhead
+and preventing certain types of bugs.
+
+** The Idea
+
+I am currently in the process of writing a [[https://github.com/visendev/clgfw][cross platform windowing library for
+common lisp]], as I am dissatisfied with the current status of common lisp ui and
+gamedev libraries. Well one of the things that I needed for this library was
+a way to represent colors. Perhaps the standard "common lisp" way to do this would
+be something like the following.
+
+#+begin_src lisp
+(defclass color ()
+  ((r :accessor r :initform 0 :initarg :r :type (unsigned-byte 8))
+   (g :accessog g :initform 0 :initarg :g :type (unsigned-byte 8))
+   (b :accessob b :initform 0 :initarg :b :type (unsigned-byte 8))
+   (a :accessoa a :initform 255 :initarg :a :type (unsigned-byte 8))))
+#+end_src
+
+However, classes have a non-trivial amount of overhead to access their slots.
+So for something so simple whose definition would most likely never change, and
+which would benefit from being faster, a struct is a better option.
+
+(Side note: there has been quite a bit of discussion about the overhead cost
+of class slot access compared to structs on the #common-lisp libera chat IRC
+server, and jackdaniel has written a blog post about it [[https://www.turtleware.eu/posts/A-brief-note-about-slot-access-cost-in-Common-Lisp.html][here]].)
+
+A defstruct form for our rgba color might look something like this:
+#+begin_src lisp
+(defstruct color
+  (r 0 :type (unsigned-byte 8))
+  (g 0 :type (unsigned-byte 8))
+  (b 0 :type (unsigned-byte 8))
+  (a 255 :type (unsigned-byte 8)))
+#+end_src
+
+This gives us similar functionality to our class version, but it should be
+more performance due to the struct's greater rigidity. Now this sort of
+implementation was working fine until I wanted to start defining color constants.
+I decided that it would be helpful for users of my library if I defined color
+constants for each of the [[https://htmlcolorcodes.com/color-names/][140 color names supported by modern html]].
+
+The normal common lisp approach for this would be to use ==:keywords== to
+represent the color names, and then use some sort of ==case== statement to
+convert the color names into instances of our rgba ==color== struct. However,
+what I don't like about the general approach of using ==:keywords== to represent
+things that would usually be ==enums== in other languages is that keywords are
+not very completion friendly. There is /*some*/ ability for slime to only suggest
+keywords that have been interned already in your lisp image, but in a large lisp
+project the keyword package may already be very polluted, so its not very easy to
+just type ==:== and ==<Tab>== and have your list of available color constants pop
+up. 
+
+For this reason, I wanted to define actual named color constants in my library,
+and then export those symbols, so that way if the user started typing ==clgfw/color:+==
+and hit ==<Tab>==, they would have a list of all of the named color constants
+I have exported. Using exported symbols in this way can also immediately clear
+up problems that can occur if with ==:keyword== constants if the user typed
+==:dark-gray== when the actual color code is named ==:dark-grey==. Using keywords
+there will be no error until code actually runs, since the keyword package is
+happy to let you use ==:dark-gray== even though that may not be a real color
+code. Compare that to using exported named symbols, it will immediately be clear
+if you make a typo or spelling error, since the symbol you try to access won't
+exist or be exported by the ==clgfw/color:== package.
+
+So the first thing I tried using our new ==color== struct was something like this.
+
+#+begin_src lisp
+(in-package #:clgfw/color)
+(defconstant +red+ (make-color :r 255 :g 0 :b 0))
+(defconstant +blue+ (make-color :r 0 :g 0 :b 255))
+;; ... and so on
+#+end_src
+
+Those of you familiar with the ==defconstant== macro in common lisp will
+likely immediately spot the problem here. Common Lisp structs are reference
+types, so two structs with the same fields will not be represented by
+the same object in memory and thus will not be ==eql==. The ==defconstant==
+macro requires that whenever it is evaluated for a second time, that its
+old value must be ==eql== to its new value. Meaning that if I try to load
+all of the ==defconstant== color codes twice in the same lisp image, it will
+cause an error, because evaluating our ==make-color== call a second time
+will produce a second object in memory.
+
+//// TODO: continue from here

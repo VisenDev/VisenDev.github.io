@@ -1,0 +1,4 @@
+* VisenDevs Blog
+
+** Posts
+- [[file:posts/1.org::*Compound Value Types in Common Lisp][Compound Value Types in Common Lisp]] [PREPRINT]
